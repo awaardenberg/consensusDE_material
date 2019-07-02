@@ -1,0 +1,293 @@
+---
+title: "Analysis for consensusDE paper - simulation"
+author: "Ashley J. Waardenberg"
+date: "30/06/2019"
+output:
+  github_document:
+    toc: yes
+    toc_depth: 3
+vignette: >
+  %\VignetteIndexEntry{simulation_results}
+  %\VignetteEngine{knitr::github_document}
+  %\VignetteEncoding{UTF-8}
+---
+
+# Notes
+30-06-2019
++ updated for compatability with consensusDE version 1.3.3
++ setting of norm_method = "all_defaults" for multi_de_pairs
+
+# functions used for analysis
+```{r sourceCode,echo=TRUE}
+source("./functions/run_sims.r")
+source("./functions/return_sims_stats.r")
+
+# path for saving files
+# where to download file, home directory, or change:
+download_dir <- "~/"
+
+```
+
+# load libraries
+```{r eval=TRUE, message=FALSE, warning=FALSE, include=TRUE}
+library(consensusDE)
+library(lattice)
+library(metaseqR)
+library(edgeR)
+```
+
+# dataset used
+```{r eval=TRUE, include=TRUE}
+
+# Mouse - bottomly	2 inbred mouse strains
+# phenodata
+# http://bowtie-bio.sourceforge.net/recount/phenotypeTables/bottomly_phenodata.txt
+# count table
+bottomly <- "http://bowtie-bio.sourceforge.net/recount/countTables/bottomly_count_table.txt"
+
+download.file(url = bottomly,
+              destfile = paste(download_dir, "bottomly_count_table.txt", sep=""))
+
+```
+
+# run simulation
+
+parameters
+- p_thresh = threshold for determining significance.
+- DE etc.
+
+```{r eval=TRUE, message=FALSE, warning=FALSE, include=TRUE}
+# establish datasets to model distribution
+data_to_test <- c(paste(download_dir, "bottomly_count_table.txt", sep=""))
+
+# number of replicates to test
+reps <- c(3, 5)
+
+# 1. with RUV
+ruv <- lapply(seq_along(reps), function(x) 
+                              wrap_all(data_to_test,
+                                       p_thresh = 0.05,
+                                       replicates = reps[x],
+                                       ruv = TRUE))
+# 2. withOUT RUV
+NOruv <- lapply(seq_along(reps), function(x) 
+                              wrap_all(data_to_test,
+                                       p_thresh = 0.05,
+                                       replicates = reps[x],
+                                       ruv = FALSE))
+
+
+```
+
+# obtain mean R-squared of logFC
+
+```{r}
+# non-ruv
+NOruv_3rep <- get_mean_FC(NOruv, 1)
+NOruv_5rep <- get_mean_FC(NOruv, 2)
+
+# ruv
+ruv_3rep <- get_mean_FC(ruv, 1)
+ruv_5rep <- get_mean_FC(ruv, 2)
+
+# put all results into a table
+table_R <- data.frame(c(as.numeric(apply(NOruv_3rep, 2, mean)), 
+                        as.numeric(apply(ruv_3rep, 2, mean)),
+                        as.numeric(apply(NOruv_5rep, 2, mean)),
+                        as.numeric(apply(ruv_5rep, 2, mean))),
+                      c(rep(c("3-NOruv", "3-ruv"), each = 3, 1), 
+                        rep(c("5-NOruv", "5-ruv"), each = 3, 1)),
+                      c(rep(c("1-VM.DE", "2-VM.ER", "3-ER.DE"), 4)))
+colnames(table_R) <- c("R", "reps", "group")
+
+# barchart of results
+barchart(R~group,
+         data = table_R,
+         groups = reps,
+         main = "R-squared of logFC with or without RUV",
+         auto.key = TRUE)
+
+```
+
+# Fold change SD
+
+```{r}
+# Fold Change Statistics
+# non-ruv
+NOruv_3rep_stats_fc <- clean_stats(NOruv, 1, isLogFC = TRUE)
+NOruv_5rep_stats_fc <- clean_stats(NOruv, 2, isLogFC = TRUE)
+# ruv
+ruv_3rep_stats_fc <- clean_stats(ruv, 1, isLogFC = TRUE)
+ruv_5rep_stats_fc <- clean_stats(ruv, 2, isLogFC = TRUE)
+
+# Obtain the mean Fold-change Standard Deviations (SD)
+# without RUV - 3 reps
+mean_3rep_fc <- sapply(1:ncol(NOruv_3rep_stats_fc), function(x) mean(unlist(data.frame(NOruv_3rep_stats_fc)[x]), na.rm=TRUE))
+names(mean_3rep_fc) <- colnames(NOruv_3rep_stats_fc)
+# without RUV - 5 reps
+mean_5rep_fc <- sapply(1:ncol(NOruv_5rep_stats_fc), function(x) mean(unlist(data.frame(NOruv_5rep_stats_fc)[x]), na.rm=TRUE))
+names(mean_5rep_fc) <- colnames(NOruv_5rep_stats_fc)
+
+# with RUV - 3 reps
+mean_3rep_fc_ruv <- sapply(1:ncol(ruv_3rep_stats_fc), function(x) mean(unlist(data.frame(ruv_3rep_stats_fc)[x]), na.rm=TRUE))
+names(mean_3rep_fc_ruv) <- colnames(ruv_3rep_stats_fc)
+# with RUV - 5 reps
+mean_5rep_fc_ruv <- sapply(1:ncol(ruv_5rep_stats_fc), function(x) mean(unlist(data.frame(ruv_5rep_stats_fc)[x]), na.rm=TRUE))
+names(mean_5rep_fc_ruv) <- colnames(ruv_5rep_stats_fc)
+
+# summary of results
+mean_fc_summary <- rbind(mean_3rep_fc,
+                         mean_5rep_fc,
+                         mean_3rep_fc_ruv,
+                         mean_5rep_fc_ruv)
+
+```
+
+# Jaccard Coeffecient
+```{r}
+# non-ruv
+NOruv_3rep_stats <- clean_stats(NOruv, 1)
+NOruv_5rep_stats <- clean_stats(NOruv, 2)
+# ruv
+ruv_3rep_stats <- clean_stats(ruv, 1)
+ruv_5rep_stats <- clean_stats(ruv, 2)
+
+# JC for each set
+# here, the first set is the intersect of all values, will normalise to 1
+# 3 reps
+int_3rep <- apply(NOruv_3rep_stats$TP_n, 2, mean) + apply(NOruv_3rep_stats$FP_n, 2, mean)
+JC_3rep <- int_3rep[1]/int_3rep
+# 5 reps
+int_5rep <- apply(NOruv_5rep_stats$TP_n, 2, mean) + apply(NOruv_5rep_stats$FP_n, 2, mean)
+JC_5rep <- int_5rep[1]/int_5rep
+
+# 3 reps - with RUV
+int_3rep_ruv <- apply(ruv_3rep_stats$TP_n, 2, mean) + apply(ruv_3rep_stats$FP_n, 2, mean)
+JC_3rep_ruv <- int_3rep_ruv[1]/int_3rep_ruv
+# 5 reps - with RUV
+int_5rep_ruv <- apply(ruv_5rep_stats$TP_n, 2, mean) + apply(ruv_5rep_stats$FP_n, 2, mean)
+JC_5rep_ruv <- int_5rep_ruv[1]/int_5rep_ruv
+
+# summarize results into table
+table_JC <- data.frame(c(as.numeric(JC_3rep[2:length(JC_3rep)]), 
+                    as.numeric(JC_3rep_ruv[2:length(JC_3rep_ruv)]),
+                    as.numeric(JC_5rep[2:length(JC_5rep)]), 
+                    as.numeric(JC_5rep_ruv[2:length(JC_5rep_ruv)])),
+                  c(rep(c("3-NOruv", "3-ruv"), each = 4, 1), 
+                    rep(c("5-NOruv", "5-ruv"), each = 4, 1)),
+                  c(rep(c("5-union", "4-EdgeR", "2-voom", "3-DESeq2"), 4)))
+colnames(table_JC) <- c("JC", "reps", "group")
+
+# plot results
+barchart(JC~group,
+         data = table_JC,
+         groups = reps,
+         main = "Jaccard Coefficient, relative to total intersect",
+         auto.key = TRUE)
+
+```
+
+# Set sizes for each comparison
+
+```{r}
+# set sizes (genes call DE) for each method
+size_summary <- rbind(int_3rep,
+                      int_3rep_ruv,
+                      int_5rep,
+                      int_5rep_ruv)
+
+size_summary
+```
+
+# FDR
+```{r}
+
+# put FDR (mean from all simulations) into table
+table_FDR <- data.frame(c(as.numeric(apply(NOruv_3rep_stats$FDR, 2, mean)), 
+                          as.numeric(apply(ruv_3rep_stats$FDR, 2, mean)),
+                          as.numeric(apply(NOruv_5rep_stats$FDR, 2, mean)),
+                          as.numeric(apply(ruv_5rep_stats$FDR, 2, mean))),
+                        c(rep(c("3-NOruv", "3-ruv"), each = 5, 1), 
+                          rep(c("5-NOruv", "5-ruv"), each = 5, 1)),
+                        c(rep(c("1-intersect", "5-union", "4-EdgeR", "2-voom", "3-DESeq2"), 4)))
+colnames(table_FDR) <- c("FDR", "reps", "group")
+
+# plot FDR
+barchart(FDR~group,
+         data = table_FDR,
+         groups = reps,
+         main = "False Discovery Rates",
+         auto.key = TRUE)
+
+```
+
+# F1 statistic
+```{r}
+
+table_F1 <- data.frame(c(as.numeric(apply(NOruv_3rep_stats$F1, 2, mean)), 
+                    as.numeric(apply(ruv_3rep_stats$F1, 2, mean)),
+                    as.numeric(apply(NOruv_5rep_stats$F1, 2, mean)),
+                      as.numeric(apply(ruv_5rep_stats$F1, 2, mean))),
+                  c(rep(c("3-NOruv", "3-ruv"), each = 5, 1), 
+                    rep(c("5-NOruv", "5-ruv"), each = 5, 1)),
+                  c(rep(c("1-intersect", "5-union", "4-EdgeR", "2-voom", "3-DESeq2"), 4)))
+colnames(table_F1) <- c("F1", "reps", "group")
+
+barchart(F1~group,
+         data = table_F1,
+         groups = reps,
+         main = "F1 - statistics",
+         auto.key = TRUE)
+         
+```
+
+# ACCURACY statistic
+
+```{r}
+table_ACC <- data.frame(c(as.numeric(apply(NOruv_3rep_stats$ACC, 2, mean)), 
+                    as.numeric(apply(ruv_3rep_stats$ACC, 2, mean)),
+                    as.numeric(apply(NOruv_5rep_stats$ACC, 2, mean)),
+                      as.numeric(apply(ruv_5rep_stats$ACC, 2, mean))),
+                  c(rep(c("3-NOruv", "3-ruv"), each = 5, 1), 
+                    rep(c("5-NOruv", "5-ruv"), each = 5, 1)),
+                  c(rep(c("1-intersect", "5-union", "4-EdgeR", "2-voom", "3-DESeq2"), 4)))
+colnames(table_ACC) <- c("ACC", "reps", "group")
+
+
+barchart(ACC~group,
+         data = table_ACC,
+         groups = reps,
+         main = "Accuracy",
+         auto.key = TRUE)
+
+```
+
+# sessionInfo
+```{r}
+sessionInfo()
+```
+
+# functions used
+printing for static reference
+
+```{r}
+wrap_all
+
+run_sims
+
+return_logFC_sd
+
+return_stats
+
+cont_list
+
+cont
+
+get_mean_FC
+
+get_r
+
+clean_stats
+
+
+```

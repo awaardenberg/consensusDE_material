@@ -1,0 +1,218 @@
+---
+title: "Analysis for consensusDE paper - airway RNA-seq"
+author: "Ashley J. Waardenberg"
+date: "30/06/2019"
+output:
+  github_document:
+    toc: yes
+    toc_depth: 3
+vignette: >
+  %\VignetteIndexEntry{airway_results}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::github_document}
+---
+
+# Notes
+30-06-2019
++ updated for compatability with consensusDE version 1.3.3
++ setting of norm_method = "all_defaults" for multi_de_pairs
+
+```{r eval=TRUE, message=FALSE, warning=FALSE, include=TRUE}
+library(consensusDE)
+library(airway)
+data(airway)
+```
+
+# functions used for analysis
+```{r sourceCode,echo=TRUE}
+source("./functions/return_airway_stats.r")
+```
+
+# Analysis of RNA-seq data with consensusDE
+```{r eval=TRUE, message=FALSE, warning=FALSE, include=TRUE}
+# establishment of data for pair-wise analysis
+colData(airway)$group <- colData(airway)$dex
+colData(airway)$file <- rownames(colData(airway))
+
+# read into a summarized experiment, with low counts filtered
+airway_filter <- buildSummarized(summarized = airway,
+                                 filter = TRUE)
+
+# run DE analysis with RUV
+airway_ruv <- multi_de_pairs(summarized = airway_filter,
+                             norm_method = "all_defaults",
+                             ruv_correct = TRUE)
+
+# run DE analysis without RUV
+airway_NOruv <- multi_de_pairs(summarized = airway_filter,
+                               norm_method = "all_defaults",
+                               ruv_correct = FALSE)
+
+```
+
+# LogFC goodness of fit - without RUV
+```{r}
+# extract logFC values for edgeR, voom and DESeq2
+all_FC <- get_merged_logfc(airway_NOruv)
+# plot results and obtain goodness of fit
+
+# 1. Voom vs. DESeq2
+plot(all_FC$logFC_VM, 
+     all_FC$logFC_DE, 
+     xlab="voom - logFC", 
+     ylab="DESeq2 - logFC")
+summary(lm(all_FC$logFC_VM~all_FC$logFC_DE))
+
+# 2. Voom vs. edgeR
+plot(all_FC$logFC_VM, 
+     all_FC$logFC_ER,
+     xlab="voom - logFC", 
+     ylab="edgeR - logFC")
+summary(lm(all_FC$logFC_VM~all_FC$logFC_ER))
+
+# 3. edgeR vs. DESeq2
+plot(all_FC$logFC_ER, 
+     all_FC$logFC_DE, 
+     xlab="edgeR - logFC", 
+     ylab="DESeq2 - logFC")
+summary(lm(all_FC$logFC_ER~all_FC$logFC_DE))
+
+```
+
+# LogFC goodness of fit - with RUV
+
+```{r}
+# extract logFC values for edgeR, voom and DESeq2
+all_FC_ruv <- get_merged_logfc(airway_ruv)
+# plot results and obtain goodness of fit
+
+# 1. Voom vs. DESeq2
+plot(all_FC_ruv$logFC_VM, 
+     all_FC_ruv$logFC_DE, 
+     xlab="voom - logFC", 
+     ylab="DESeq2 - logFC")
+summary(lm(all_FC_ruv$logFC_VM~all_FC_ruv$logFC_DE))
+
+# 2. Voom vs. edgeR
+plot(all_FC_ruv$logFC_VM, 
+     all_FC_ruv$logFC_ER,
+     xlab="voom - logFC", 
+     ylab="edgeR - logFC")
+summary(lm(all_FC_ruv$logFC_VM~all_FC_ruv$logFC_ER))
+
+# 3. edgeR vs. DESeq2
+plot(all_FC_ruv$logFC_ER, 
+     all_FC_ruv$logFC_DE, 
+     xlab="edgeR - logFC", 
+     ylab="DESeq2 - logFC")
+summary(lm(all_FC_ruv$logFC_ER~all_FC_ruv$logFC_DE))
+
+```
+
+# Jaccard Coefficient and Set Sizes
+
+```{r}
+non_ruv <- return_cde_stats(airway_NOruv)
+ruv <- return_cde_stats(airway_ruv)
+
+# Jaccard coefficients
+JC_stats <- rbind(unlist(non_ruv$props),
+                  unlist(ruv$props))
+rownames(JC_stats) <- c("non_RUV", "RUV")
+
+#print results
+JC_stats
+
+# set sizes
+non_ruv_set_size <- c(length(non_ruv$venn_input$VM),
+                      length(non_ruv$venn_input$DE),
+                      length(non_ruv$venn_input$ER),
+                      length(non_ruv$intersect))
+
+ruv_set_size <- c(length(ruv$venn_input$VM),
+                  length(ruv$venn_input$DE),
+                  length(ruv$venn_input$ER),
+                  length(ruv$intersect))
+
+# percetage increases (nonRUV to RUV)
+percent_diff <- c((length(ruv$venn_input$VM)-length(non_ruv$venn_input$VM))/length(ruv$venn_input$VM),
+                  (length(ruv$venn_input$DE)-length(non_ruv$venn_input$DE))/length(ruv$venn_input$DE),
+                  (length(ruv$venn_input$ER)-length(non_ruv$venn_input$ER))/length(ruv$venn_input$ER),
+                  (length(ruv$intersect)-length(non_ruv$intersect))/length(ruv$intersect))
+
+set_sizes <- rbind(non_ruv_set_size,
+                   ruv_set_size,
+                   percent_diff)
+
+colnames(set_sizes) <- c("voom", "DESeq2", "edgeR", "intersect")
+rownames(set_sizes) <- c("non_RUV", "RUV", "percent_diff")
+
+# print results
+set_sizes
+```
+
+# Mean LogFC standard deviation of sets
+
+```{r}
+mean_sd <- rbind(c(mean(abs(non_ruv$ER$LogFC_sd)),
+                   mean(abs(non_ruv$VM$LogFC_sd)),
+                   mean(abs(non_ruv$DE$LogFC_sd))),
+                 c(mean(abs(ruv$ER$LogFC_sd)),
+                   mean(abs(ruv$VM$LogFC_sd)),
+                   mean(abs(ruv$DE$LogFC_sd))))
+colnames(mean_sd) <- c("edgeR", "voom", "DESeq2")
+rownames(mean_sd) <- c("non_RUV", "RUV")
+
+# print results
+mean_sd
+
+```
+
+```{r}
+# of the non-intersecting sets for each algorithm
+mean_sd_not_intersect <- rbind(c(mean(abs(non_ruv$ER[!non_ruv$ER$ID %in% non_ruv$intersect,]$LogFC_sd)),
+                                 mean(abs(non_ruv$VM[!non_ruv$VM$ID %in% non_ruv$intersect,]$LogFC_sd)),
+                                 mean(abs(non_ruv$DE[!non_ruv$DE$ID %in% non_ruv$intersect,]$LogFC_sd))),
+                               c(mean(abs(ruv$ER[!ruv$ER$ID %in% ruv$intersect,]$LogFC_sd)),
+                                 mean(abs(ruv$VM[!ruv$VM$ID %in% ruv$intersect,]$LogFC_sd)),
+                                 mean(abs(ruv$DE[!ruv$DE$ID %in% ruv$intersect,]$LogFC_sd))))
+colnames(mean_sd_not_intersect) <- c("edgeR", "voom", "DESeq2")
+rownames(mean_sd_not_intersect) <- c("non_RUV", "RUV")
+
+# print results
+mean_sd_not_intersect
+```
+
+```{r}
+# overall intersect
+mean_sd_intersect <- c(mean(abs(non_ruv$DE[non_ruv$DE$ID %in% non_ruv$intersect,]$LogFC_sd)),
+                       mean(abs(ruv$DE[ruv$DE$ID %in% ruv$intersect,]$LogFC_sd)))
+names(mean_sd_intersect) <- c("non_RUV", "RUV")
+
+# print results
+mean_sd_intersect
+```
+
+```{r}
+# overall union
+mean_sd_union <- c(mean(abs(unique(rbind(non_ruv$ER,non_ruv$VM,non_ruv$DE)$LogFC_sd))),
+                   mean(abs(unique(rbind(ruv$ER,ruv$VM,ruv$DE)$LogFC_sd))))
+names(mean_sd_union) <- c("non_RUV", "RUV")
+
+# print results
+mean_sd_union
+```
+
+# sessionInfo
+```{r}
+sessionInfo()
+```
+
+# functions used
+printing for static reference
+
+```{r}
+return_cde_stats
+
+get_merged_logfc
+```
