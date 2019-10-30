@@ -309,7 +309,7 @@ barchart(LOA~group,
 
 ```
 
-#  Blant - Altman plots a
+#  Blant - Altman plots
 
 ```{r}
 # plot results and determine statistics
@@ -342,8 +342,6 @@ blandr.draw(method1 = all_FC$logFC_ER,
             plotter = "rplot")
 
 ```
-
-# add Blant - Altman plots and t-tests - with RUV 
 
 ```{r}
 

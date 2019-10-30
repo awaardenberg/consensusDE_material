@@ -13,8 +13,7 @@ Ashley J. Waardenberg
 -   [LogFC goodness of fit - without RUV](#logfc-goodness-of-fit---without-ruv)
 -   [LogFC goodness of fit - with RUV](#logfc-goodness-of-fit---with-ruv)
 -   [Blant Altman analysis](#blant-altman-analysis)
--   [Blant - Altman plots a](#blant---altman-plots-a)
--   [add Blant - Altman plots and t-tests - with RUV](#add-blant---altman-plots-and-t-tests---with-ruv)
+-   [Blant - Altman plots](#blant---altman-plots)
 -   [sessionInfo](#sessioninfo)
 -   [functions used](#functions-used)
 
@@ -502,8 +501,8 @@ barchart(LOA~group,
 
 ![](1_airway_analysis_files/figure-markdown_github/unnamed-chunk-15-1.png)
 
-Blant - Altman plots a
-======================
+Blant - Altman plots
+====================
 
 ``` r
 # plot results and determine statistics
@@ -545,9 +544,6 @@ blandr.draw(method1 = all_FC$logFC_ER,
 ```
 
 ![](1_airway_analysis_files/figure-markdown_github/unnamed-chunk-16-3.png)
-
-add Blant - Altman plots and t-tests - with RUV
-===============================================
 
 ``` r
 # 1. Voom vs. DESeq2
@@ -755,7 +751,7 @@ return_cde_stats
     ##     return(list(venn_input = venn.inputs, intersect = ER.DE.VM_ID, 
     ##         props = props, ER = ER, DE = DE, VM = VM))
     ## }
-    ## <bytecode: 0x7ffe5ce3abe0>
+    ## <bytecode: 0x7f92ff0c2d60>
 
 ``` r
 get_merged_logfc
@@ -773,4 +769,4 @@ get_merged_logfc
     ##         by = "ID")
     ##     return(all_FC)
     ## }
-    ## <bytecode: 0x7ffe5706be78>
+    ## <bytecode: 0x7f92f9c174b8>
