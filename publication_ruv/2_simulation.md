@@ -1,7 +1,7 @@
 Analysis for consensusDE paper - simulation
 ================
 Ashley J. Waardenberg
-30/06/2019
+30/10/2019
 
 -   [Notes](#notes)
 -   [functions used for analysis](#functions-used-for-analysis)
@@ -9,17 +9,23 @@ Ashley J. Waardenberg
 -   [dataset used](#dataset-used)
 -   [run simulation](#run-simulation)
 -   [obtain mean R-squared of logFC](#obtain-mean-r-squared-of-logfc)
+-   [Bland-Altman analysis](#bland-altman-analysis)
+-   [upper limits](#upper-limits)
+-   [lower limits](#lower-limits)
 -   [Fold change SD](#fold-change-sd)
 -   [Jaccard Coeffecient](#jaccard-coeffecient)
 -   [Set sizes for each comparison](#set-sizes-for-each-comparison)
 -   [FDR](#fdr)
--   [F1 statistic](#f1-statistic)
--   [ACCURACY statistic](#accuracy-statistic)
+-   [sensitivity - added in revision (recall)](#sensitivity---added-in-revision-recall)
+-   [F1 statistics](#f1-statistics)
+-   [ACCURACY statistic - not good for imbalanced data](#accuracy-statistic---not-good-for-imbalanced-data)
 -   [sessionInfo](#sessioninfo)
 -   [functions used](#functions-used)
 
 Notes
 =====
+
+30-10-2019 + modifications in response to reviewers comments + updated to consensusDE version 1.3.4 + addition of bland-altman analyses
 
 30-06-2019 + updated for compatability with consensusDE version 1.3.3 + setting of norm\_method = "all\_defaults" for multi\_de\_pairs
 
@@ -43,6 +49,7 @@ library(consensusDE)
 library(lattice)
 library(metaseqR)
 library(edgeR)
+library(blandr)
 ```
 
 dataset used
@@ -62,7 +69,7 @@ download.file(url = bottomly,
 run simulation
 ==============
 
-parameters - p\_thresh = threshold for determining significance. - DE etc.
+parameters - p\_thresh = threshold for determining significance. - norm\_method = "all\_deafults". Selects the default normalisation approach for each method.
 
 ``` r
 # establish datasets to model distribution
@@ -71,18 +78,25 @@ data_to_test <- c(paste(download_dir, "bottomly_count_table.txt", sep=""))
 # number of replicates to test
 reps <- c(3, 5)
 
+# default parameters for simulations:
+# sim_number = 10
+# de_number = 500
+# de_size = 10000
+
 # 1. with RUV
 ruv <- lapply(seq_along(reps), function(x) 
                               wrap_all(data_to_test,
                                        p_thresh = 0.05,
                                        replicates = reps[x],
-                                       ruv = TRUE))
+                                       ruv = TRUE,
+                                       norm_method = "all_defaults"))
 # 2. withOUT RUV
 NOruv <- lapply(seq_along(reps), function(x) 
                               wrap_all(data_to_test,
                                        p_thresh = 0.05,
                                        replicates = reps[x],
-                                       ruv = FALSE))
+                                       ruv = FALSE,
+                                       norm_method = "all_defaults"))
 ```
 
 obtain mean R-squared of logFC
@@ -90,9 +104,8 @@ obtain mean R-squared of logFC
 
 ``` r
 # non-ruv
-NOruv_3rep <- get_mean_FC(NOruv, 1)
-NOruv_5rep <- get_mean_FC(NOruv, 2)
-
+NOruv_3rep <- get_mean_FC(NOruv, 1) # 1 indicates experiment with 3 replicates
+NOruv_5rep <- get_mean_FC(NOruv, 2) # 2 indicates experiment with 5 replicates
 # ruv
 ruv_3rep <- get_mean_FC(ruv, 1)
 ruv_5rep <- get_mean_FC(ruv, 2)
@@ -112,10 +125,112 @@ barchart(R~group,
          data = table_R,
          groups = reps,
          main = "R-squared of logFC with or without RUV",
-         auto.key = TRUE)
+         auto.key = TRUE,
+         ylim = c(0, 1.1))
 ```
 
 ![](2_simulation_files/figure-markdown_github/unnamed-chunk-4-1.png)
+
+Bland-Altman analysis
+=====================
+
+``` r
+# non-ruv
+NOruv_3rep <- get_bias_FC(NOruv, 1, method = "bias") # 1 indicates experiment with 3 replicates
+NOruv_5rep <- get_bias_FC(NOruv, 2, method = "bias") # 2 indicates experiment with 5 replicates
+
+# ruv
+ruv_3rep <- get_bias_FC(ruv, 1, method = "bias")
+ruv_5rep <- get_bias_FC(ruv, 2, method = "bias")
+
+# put all results into a table
+# for bias use the absolute values.
+table_bias <- data.frame(c(as.numeric(apply(abs(NOruv_3rep), 2, mean)), 
+                        as.numeric(apply(abs(ruv_3rep), 2, mean)),
+                        as.numeric(apply(abs(NOruv_5rep), 2, mean)),
+                        as.numeric(apply(abs(ruv_5rep), 2, mean))),
+                      c(rep(c("3-NOruv", "3-ruv"), each = 3, 1), 
+                        rep(c("5-NOruv", "5-ruv"), each = 3, 1)),
+                      c(rep(c("1-VM.DE", "2-VM.ER", "3-ER.DE"), 4)))
+colnames(table_bias) <- c("bias", "reps", "group")
+
+# barchart of results
+barchart(bias~group,
+         data = table_bias,
+         groups = reps,
+         main = "Bias of logFC with or without RUV",
+         auto.key = TRUE)
+```
+
+![](2_simulation_files/figure-markdown_github/unnamed-chunk-5-1.png)
+
+upper limits
+============
+
+``` r
+# non-ruv
+NOruv_3rep <- get_bias_FC(NOruv, 1, method = "upperLOA") # 1 indicates experiment with 3 replicates
+NOruv_5rep <- get_bias_FC(NOruv, 2, method = "upperLOA") # 2 indicates experiment with 5 replicates
+
+# ruv
+ruv_3rep <- get_bias_FC(ruv, 1, method = "upperLOA")
+ruv_5rep <- get_bias_FC(ruv, 2, method = "upperLOA")
+
+# put all results into a table
+# for bias use the absolute values.
+table_upperLOA <- data.frame(c(as.numeric(apply(abs(NOruv_3rep), 2, mean)), 
+                        as.numeric(apply(abs(ruv_3rep), 2, mean)),
+                        as.numeric(apply(abs(NOruv_5rep), 2, mean)),
+                        as.numeric(apply(abs(ruv_5rep), 2, mean))),
+                      c(rep(c("3-NOruv", "3-ruv"), each = 3, 1), 
+                        rep(c("5-NOruv", "5-ruv"), each = 3, 1)),
+                      c(rep(c("1-VM.DE", "2-VM.ER", "3-ER.DE"), 4)))
+colnames(table_upperLOA) <- c("LOA", "reps", "group")
+
+# barchart of results
+barchart(LOA~group,
+         data = table_upperLOA,
+         groups = reps,
+         main = "table_upperLOA of logFC with or without RUV",
+         ylim = c(0,0.2),
+         auto.key = TRUE)
+```
+
+![](2_simulation_files/figure-markdown_github/unnamed-chunk-6-1.png)
+
+lower limits
+============
+
+``` r
+# non-ruv
+NOruv_3rep <- get_bias_FC(NOruv, 1, method = "lowerLOA") # 1 indicates experiment with 3 replicates
+NOruv_5rep <- get_bias_FC(NOruv, 2, method = "lowerLOA") # 2 indicates experiment with 5 replicates
+
+# ruv
+ruv_3rep <- get_bias_FC(ruv, 1, method = "lowerLOA")
+ruv_5rep <- get_bias_FC(ruv, 2, method = "lowerLOA")
+
+# put all results into a table
+# for bias use the absolute values.
+table_lowerLOA <- data.frame(c(as.numeric(apply(abs(NOruv_3rep), 2, mean)), 
+                        as.numeric(apply(abs(ruv_3rep), 2, mean)),
+                        as.numeric(apply(abs(NOruv_5rep), 2, mean)),
+                        as.numeric(apply(abs(ruv_5rep), 2, mean))),
+                      c(rep(c("3-NOruv", "3-ruv"), each = 3, 1), 
+                        rep(c("5-NOruv", "5-ruv"), each = 3, 1)),
+                      c(rep(c("1-VM.DE", "2-VM.ER", "3-ER.DE"), 4)))
+colnames(table_lowerLOA) <- c("LOA", "reps", "group")
+
+# barchart of results
+barchart(LOA~group,
+         data = table_lowerLOA,
+         groups = reps,
+         main = "lowerLOA of logFC with or without RUV",
+         ylim = c(0,0.2),
+         auto.key = TRUE)
+```
+
+![](2_simulation_files/figure-markdown_github/unnamed-chunk-7-1.png)
 
 Fold change SD
 ==============
@@ -149,7 +264,21 @@ mean_fc_summary <- rbind(mean_3rep_fc,
                          mean_5rep_fc,
                          mean_3rep_fc_ruv,
                          mean_5rep_fc_ruv)
+
+# print results
+mean_fc_summary
 ```
+
+    ##                        inter      union      EdgeR        voom     DESeq2
+    ## mean_3rep_fc     0.010696150 0.01536126 0.01539282 0.010723688 0.01410433
+    ## mean_5rep_fc     0.011179286 0.01338375 0.01360740 0.011432020 0.01286085
+    ## mean_3rep_fc_ruv 0.008473762 0.01475267 0.01466842 0.008632374 0.01332041
+    ## mean_5rep_fc_ruv 0.009873468 0.01274185 0.01277087 0.010022407 0.01193493
+    ##                  EdgeR_unique voom_unique DESeq2_unique
+    ## mean_3rep_fc       0.02520833  0.03153250    0.02167928
+    ## mean_5rep_fc       0.02823771  0.06377779    0.02156037
+    ## mean_3rep_fc_ruv   0.02424473  0.05344353    0.02323371
+    ## mean_5rep_fc_ruv   0.02841812  0.08643235    0.02250589
 
 Jaccard Coeffecient
 ===================
@@ -193,10 +322,11 @@ barchart(JC~group,
          data = table_JC,
          groups = reps,
          main = "Jaccard Coefficient, relative to total intersect",
-         auto.key = TRUE)
+         auto.key = TRUE,
+         ylim = c(0, 1.05))
 ```
 
-![](2_simulation_files/figure-markdown_github/unnamed-chunk-6-1.png)
+![](2_simulation_files/figure-markdown_github/unnamed-chunk-9-1.png)
 
 Set sizes for each comparison
 =============================
@@ -239,10 +369,35 @@ barchart(FDR~group,
          auto.key = TRUE)
 ```
 
-![](2_simulation_files/figure-markdown_github/unnamed-chunk-8-1.png)
+![](2_simulation_files/figure-markdown_github/unnamed-chunk-11-1.png)
 
-F1 statistic
-============
+sensitivity - added in revision (recall)
+========================================
+
+``` r
+# put sensitivity (mean from all simulations) into table
+table_sens <- data.frame(c(as.numeric(apply(NOruv_3rep_stats$sens, 2, mean)), 
+                          as.numeric(apply(ruv_3rep_stats$sens, 2, mean)),
+                          as.numeric(apply(NOruv_5rep_stats$sens, 2, mean)),
+                          as.numeric(apply(ruv_5rep_stats$sens, 2, mean))),
+                        c(rep(c("3-NOruv", "3-ruv"), each = 5, 1), 
+                          rep(c("5-NOruv", "5-ruv"), each = 5, 1)),
+                        c(rep(c("1-intersect", "5-union", "4-EdgeR", "2-voom", "3-DESeq2"), 4)))
+colnames(table_sens) <- c("sens", "reps", "group")
+
+# plot
+barchart(sens~group,
+         data = table_sens,
+         groups = reps,
+         main = "Sensitivity",
+         ylim = c(0, 1.05),
+         auto.key = TRUE)
+```
+
+![](2_simulation_files/figure-markdown_github/unnamed-chunk-12-1.png)
+
+F1 statistics
+=============
 
 ``` r
 table_F1 <- data.frame(c(as.numeric(apply(NOruv_3rep_stats$F1, 2, mean)), 
@@ -258,13 +413,14 @@ barchart(F1~group,
          data = table_F1,
          groups = reps,
          main = "F1 - statistics",
-         auto.key = TRUE)
+         auto.key = TRUE,
+         ylim = c(0, 1.05))
 ```
 
-![](2_simulation_files/figure-markdown_github/unnamed-chunk-9-1.png)
+![](2_simulation_files/figure-markdown_github/unnamed-chunk-13-1.png)
 
-ACCURACY statistic
-==================
+ACCURACY statistic - not good for imbalanced data
+=================================================
 
 ``` r
 table_ACC <- data.frame(c(as.numeric(apply(NOruv_3rep_stats$ACC, 2, mean)), 
@@ -281,10 +437,11 @@ barchart(ACC~group,
          data = table_ACC,
          groups = reps,
          main = "Accuracy",
+         ylim = c(0, 1.05),
          auto.key = TRUE)
 ```
 
-![](2_simulation_files/figure-markdown_github/unnamed-chunk-10-1.png)
+![](2_simulation_files/figure-markdown_github/unnamed-chunk-14-1.png)
 
 sessionInfo
 ===========
@@ -309,134 +466,136 @@ sessionInfo()
     ## [8] methods   base     
     ## 
     ## other attached packages:
-    ##  [1] edgeR_3.22.5                metaseqR_1.22.1            
-    ##  [3] qvalue_2.14.1               limma_3.36.5               
-    ##  [5] DESeq_1.32.0                locfit_1.5-9.1             
-    ##  [7] EDASeq_2.14.1               ShortRead_1.38.0           
-    ##  [9] GenomicAlignments_1.16.0    SummarizedExperiment_1.10.1
-    ## [11] DelayedArray_0.6.6          matrixStats_0.54.0         
-    ## [13] Rsamtools_1.34.1            GenomicRanges_1.32.7       
-    ## [15] GenomeInfoDb_1.16.0         Biostrings_2.48.0          
-    ## [17] XVector_0.20.0              IRanges_2.14.12            
-    ## [19] S4Vectors_0.18.3            BiocParallel_1.16.6        
-    ## [21] Biobase_2.40.0              lattice_0.20-35            
-    ## [23] consensusDE_1.3.3           BiocGenerics_0.26.0        
+    ##  [1] blandr_0.5.1                edgeR_3.22.5               
+    ##  [3] metaseqR_1.22.1             qvalue_2.14.1              
+    ##  [5] limma_3.36.5                DESeq_1.32.0               
+    ##  [7] locfit_1.5-9.1              EDASeq_2.14.1              
+    ##  [9] ShortRead_1.38.0            GenomicAlignments_1.16.0   
+    ## [11] SummarizedExperiment_1.10.1 DelayedArray_0.6.6         
+    ## [13] matrixStats_0.54.0          Rsamtools_1.34.1           
+    ## [15] GenomicRanges_1.32.7        GenomeInfoDb_1.16.0        
+    ## [17] Biostrings_2.48.0           XVector_0.20.0             
+    ## [19] IRanges_2.14.12             S4Vectors_0.18.3           
+    ## [21] BiocParallel_1.16.6         Biobase_2.40.0             
+    ## [23] lattice_0.20-35             consensusDE_1.3.4          
+    ## [25] BiocGenerics_0.26.0        
     ## 
     ## loaded via a namespace (and not attached):
-    ##   [1] colorspace_1.3-2                         
-    ##   [2] rjson_0.2.20                             
-    ##   [3] hwriter_1.3.2                            
-    ##   [4] htmlTable_1.12                           
-    ##   [5] base64enc_0.1-3                          
-    ##   [6] rstudioapi_0.7                           
-    ##   [7] affyio_1.52.0                            
-    ##   [8] bit64_0.9-7                              
-    ##   [9] AnnotationDbi_1.44.0                     
-    ##  [10] splines_3.5.1                            
-    ##  [11] R.methodsS3_1.7.1                        
-    ##  [12] geneplotter_1.58.0                       
-    ##  [13] knitr_1.23                               
-    ##  [14] Formula_1.2-3                            
-    ##  [15] log4r_0.2                                
-    ##  [16] baySeq_2.16.0                            
-    ##  [17] annotate_1.58.0                          
-    ##  [18] vsn_3.50.0                               
+    ##   [1] backports_1.1.2                          
+    ##   [2] Hmisc_4.1-1                              
+    ##   [3] corrplot_0.84                            
+    ##   [4] aroma.light_3.10.0                       
+    ##   [5] plyr_1.8.4                               
+    ##   [6] lazyeval_0.2.2                           
+    ##   [7] splines_3.5.1                            
+    ##   [8] NOISeq_2.26.1                            
+    ##   [9] ggplot2_3.1.1                            
+    ##  [10] NBPSeq_0.3.0                             
+    ##  [11] digest_0.6.21                            
+    ##  [12] ensembldb_2.6.7                          
+    ##  [13] htmltools_0.4.0                          
+    ##  [14] viridis_0.5.1                            
+    ##  [15] gdata_2.18.0                             
+    ##  [16] magrittr_1.5                             
+    ##  [17] checkmate_1.8.5                          
+    ##  [18] memoise_1.1.0                            
     ##  [19] cluster_2.0.7-1                          
-    ##  [20] R.oo_1.22.0                              
-    ##  [21] BiocManager_1.30.4                       
-    ##  [22] compiler_3.5.1                           
-    ##  [23] httr_1.3.1                               
-    ##  [24] backports_1.1.2                          
-    ##  [25] assertthat_0.2.1                         
-    ##  [26] Matrix_1.2-14                            
-    ##  [27] lazyeval_0.2.2                           
-    ##  [28] airway_0.114.0                           
-    ##  [29] acepack_1.4.1                            
-    ##  [30] htmltools_0.3.6                          
-    ##  [31] prettyunits_1.0.2                        
-    ##  [32] tools_3.5.1                              
-    ##  [33] bindrcpp_0.2.2                           
-    ##  [34] affy_1.60.0                              
+    ##  [20] annotate_1.58.0                          
+    ##  [21] R.utils_2.7.0                            
+    ##  [22] prettyunits_1.0.2                        
+    ##  [23] airway_0.114.0                           
+    ##  [24] colorspace_1.3-2                         
+    ##  [25] blob_1.1.1                               
+    ##  [26] xfun_0.10                                
+    ##  [27] dplyr_0.7.8                              
+    ##  [28] crayon_1.3.4                             
+    ##  [29] RCurl_1.95-4.12                          
+    ##  [30] genefilter_1.62.0                        
+    ##  [31] bindr_0.1.1                              
+    ##  [32] brew_1.0-6                               
+    ##  [33] survival_2.42-6                          
+    ##  [34] glue_1.3.1                               
     ##  [35] gtable_0.3.0                             
-    ##  [36] glue_1.3.1                               
-    ##  [37] GenomeInfoDbData_1.1.0                   
-    ##  [38] reshape2_1.4.3                           
-    ##  [39] dplyr_0.7.8                              
-    ##  [40] Rcpp_0.12.19                             
-    ##  [41] TxDb.Dmelanogaster.UCSC.dm3.ensGene_3.2.2
-    ##  [42] preprocessCore_1.44.0                    
-    ##  [43] gdata_2.18.0                             
-    ##  [44] rtracklayer_1.40.6                       
-    ##  [45] xfun_0.7                                 
-    ##  [46] stringr_1.4.0                            
-    ##  [47] ensembldb_2.6.7                          
-    ##  [48] gtools_3.8.1                             
-    ##  [49] XML_3.98-1.16                            
-    ##  [50] dendextend_1.12.0                        
-    ##  [51] zlibbioc_1.26.0                          
-    ##  [52] MASS_7.3-50                              
-    ##  [53] scales_1.0.0                             
-    ##  [54] aroma.light_3.10.0                       
-    ##  [55] pcaMethods_1.72.0                        
-    ##  [56] hms_0.4.2                                
-    ##  [57] ProtGenerics_1.14.0                      
-    ##  [58] AnnotationFilter_1.6.0                   
-    ##  [59] RColorBrewer_1.1-2                       
-    ##  [60] yaml_2.2.0                               
-    ##  [61] curl_3.2                                 
-    ##  [62] NBPSeq_0.3.0                             
-    ##  [63] memoise_1.1.0                            
-    ##  [64] RUVSeq_1.16.1                            
-    ##  [65] gridExtra_2.3                            
-    ##  [66] ggplot2_3.1.1                            
-    ##  [67] biomaRt_2.36.1                           
-    ##  [68] rpart_4.1-13                             
-    ##  [69] latticeExtra_0.6-28                      
-    ##  [70] stringi_1.4.3                            
-    ##  [71] RSQLite_2.1.1                            
-    ##  [72] genefilter_1.62.0                        
-    ##  [73] corrplot_0.84                            
-    ##  [74] checkmate_1.8.5                          
-    ##  [75] caTools_1.17.1.1                         
-    ##  [76] GenomicFeatures_1.32.3                   
-    ##  [77] rlang_0.3.4                              
-    ##  [78] pkgconfig_2.0.2                          
-    ##  [79] bitops_1.0-6                             
-    ##  [80] evaluate_0.14                            
-    ##  [81] purrr_0.2.5                              
-    ##  [82] bindr_0.1.1                              
-    ##  [83] htmlwidgets_1.2                          
-    ##  [84] bit_1.1-14                               
-    ##  [85] tidyselect_0.2.5                         
-    ##  [86] plyr_1.8.4                               
-    ##  [87] magrittr_1.5                             
-    ##  [88] DESeq2_1.20.0                            
-    ##  [89] R6_2.2.2                                 
-    ##  [90] gplots_3.0.1.1                           
-    ##  [91] Hmisc_4.1-1                              
-    ##  [92] DBI_1.0.0                                
-    ##  [93] pillar_1.3.1                             
-    ##  [94] foreign_0.8-71                           
-    ##  [95] abind_1.4-5                              
-    ##  [96] survival_2.42-6                          
-    ##  [97] RCurl_1.95-4.11                          
-    ##  [98] nnet_7.3-12                              
-    ##  [99] tibble_2.1.1                             
-    ## [100] crayon_1.3.4                             
+    ##  [36] zlibbioc_1.26.0                          
+    ##  [37] abind_1.4-5                              
+    ##  [38] scales_1.0.0                             
+    ##  [39] vsn_3.50.0                               
+    ##  [40] DBI_1.0.0                                
+    ##  [41] Rcpp_1.0.2                               
+    ##  [42] viridisLite_0.3.0                        
+    ##  [43] xtable_1.8-3                             
+    ##  [44] progress_1.2.0                           
+    ##  [45] htmlTable_1.12                           
+    ##  [46] foreign_0.8-71                           
+    ##  [47] bit_1.1-14                               
+    ##  [48] preprocessCore_1.44.0                    
+    ##  [49] Formula_1.2-3                            
+    ##  [50] baySeq_2.16.0                            
+    ##  [51] htmlwidgets_1.2                          
+    ##  [52] httr_1.3.1                               
+    ##  [53] gplots_3.0.1.1                           
+    ##  [54] RColorBrewer_1.1-2                       
+    ##  [55] acepack_1.4.1                            
+    ##  [56] log4r_0.2                                
+    ##  [57] pkgconfig_2.0.2                          
+    ##  [58] XML_3.98-1.16                            
+    ##  [59] R.methodsS3_1.7.1                        
+    ##  [60] nnet_7.3-12                              
+    ##  [61] tidyselect_0.2.5                         
+    ##  [62] rlang_0.4.0                              
+    ##  [63] reshape2_1.4.3                           
+    ##  [64] AnnotationDbi_1.44.0                     
+    ##  [65] munsell_0.5.0                            
+    ##  [66] tools_3.5.1                              
+    ##  [67] jmvcore_1.0.8                            
+    ##  [68] RSQLite_2.1.1                            
+    ##  [69] evaluate_0.14                            
+    ##  [70] stringr_1.4.0                            
+    ##  [71] yaml_2.2.0                               
+    ##  [72] knitr_1.25                               
+    ##  [73] bit64_0.9-7                              
+    ##  [74] caTools_1.17.1.1                         
+    ##  [75] purrr_0.2.5                              
+    ##  [76] AnnotationFilter_1.6.0                   
+    ##  [77] dendextend_1.12.0                        
+    ##  [78] bindrcpp_0.2.2                           
+    ##  [79] R.oo_1.22.0                              
+    ##  [80] biomaRt_2.36.1                           
+    ##  [81] compiler_3.5.1                           
+    ##  [82] rstudioapi_0.7                           
+    ##  [83] curl_3.2                                 
+    ##  [84] affyio_1.52.0                            
+    ##  [85] tibble_2.1.1                             
+    ##  [86] geneplotter_1.58.0                       
+    ##  [87] stringi_1.4.3                            
+    ##  [88] GenomicFeatures_1.32.3                   
+    ##  [89] ProtGenerics_1.14.0                      
+    ##  [90] Matrix_1.2-14                            
+    ##  [91] pillar_1.3.1                             
+    ##  [92] BiocManager_1.30.4                       
+    ##  [93] data.table_1.12.2                        
+    ##  [94] bitops_1.0-6                             
+    ##  [95] rtracklayer_1.40.6                       
+    ##  [96] R6_2.2.2                                 
+    ##  [97] latticeExtra_0.6-28                      
+    ##  [98] pcaMethods_1.72.0                        
+    ##  [99] affy_1.60.0                              
+    ## [100] hwriter_1.3.2                            
     ## [101] KernSmooth_2.23-15                       
-    ## [102] rmarkdown_1.13                           
-    ## [103] viridis_0.5.1                            
-    ## [104] progress_1.2.0                           
-    ## [105] grid_3.5.1                               
-    ## [106] data.table_1.12.2                        
-    ## [107] blob_1.1.1                               
-    ## [108] digest_0.6.18                            
-    ## [109] xtable_1.8-3                             
-    ## [110] brew_1.0-6                               
-    ## [111] R.utils_2.7.0                            
-    ## [112] munsell_0.5.0                            
-    ## [113] NOISeq_2.26.1                            
-    ## [114] viridisLite_0.3.0
+    ## [102] gridExtra_2.3                            
+    ## [103] MASS_7.3-50                              
+    ## [104] gtools_3.8.1                             
+    ## [105] assertthat_0.2.1                         
+    ## [106] DESeq2_1.20.0                            
+    ## [107] rjson_0.2.20                             
+    ## [108] RUVSeq_1.16.1                            
+    ## [109] GenomeInfoDbData_1.1.0                   
+    ## [110] hms_0.4.2                                
+    ## [111] grid_3.5.1                               
+    ## [112] rpart_4.1-13                             
+    ## [113] TxDb.Dmelanogaster.UCSC.dm3.ensGene_3.2.2
+    ## [114] rmarkdown_1.16                           
+    ## [115] base64enc_0.1-3
 
 functions used
 ==============
@@ -448,26 +607,27 @@ wrap_all
 ```
 
     ## function (path_to_data, p_thresh = 0.05, replicates = 3, ruv = FALSE, 
-    ##     sim_number = 10, de_number = 500, de_size = 10000) 
+    ##     norm_method = norm_method, sim_number = 10, de_number = 500, 
+    ##     de_size = 10000) 
     ## {
     ##     set.seed(1234)
     ##     sims <- lapply(1:sim_number, function(x) run_sims(real_data = path_to_data, 
     ##         replicates = replicates, den_n = de_size, n_de = de_number, 
-    ##         ruv = ruv))
+    ##         ruv = ruv, norm_method = norm_method))
     ##     sims_stats <- lapply(1:length(sims), function(x) return_stats(sims[[x]], 
     ##         p_threshold = p_thresh))
     ##     sd_stats <- lapply(1:length(sims), function(x) return_logFC_sd(sims[[x]], 
     ##         p_threshold = p_thresh))
     ##     return(list(sims = sims, stats = sims_stats, sd_stats = sd_stats))
     ## }
-    ## <bytecode: 0x7fe26ef54378>
+    ## <bytecode: 0x7fe03771c660>
 
 ``` r
 run_sims
 ```
 
     ## function (real_data = NULL, sample_table = NULL, replicates = 3, 
-    ##     den_n = 10000, n_de = 500, ruv = FALSE) 
+    ##     den_n = 10000, n_de = 500, ruv = FALSE, norm_method = norm_method) 
     ## {
     ##     sample_table <- data.frame(file = paste(rep(c("G1_rep", "G2_rep"), 
     ##         each = replicates), 1:replicates, sep = ""), group = rep(c("G1", 
@@ -485,7 +645,7 @@ run_sims
     ##     keep <- filterByExpr(assays(se)$counts, group = colData(se)$group)
     ##     se <- se[rownames(se)[keep], ]
     ##     mde <- multi_de_pairs(summarized = se, ruv_correct = ruv, 
-    ##         norm_method = "all_defaults", verbose = TRUE)
+    ##         norm_method = norm_method, verbose = TRUE)
     ##     merged_data <- mde$merged[[1]]
     ##     TP <- data.frame(ID = names(true_de), test = 1)
     ##     TN <- data.frame(ID = names(neg_de), test = 2)
@@ -496,7 +656,7 @@ run_sims
     ##     return(list(merged = output, TP = true_de, TN = neg_de, syn_data = syn_data, 
     ##         mde_all = mde))
     ## }
-    ## <bytecode: 0x7fe2712442e0>
+    ## <bytecode: 0x7fe03a214d60>
 
 ``` r
 return_logFC_sd
@@ -529,7 +689,7 @@ return_logFC_sd
     ##         "DESeq2", "EdgeR_unique", "voom_unique", "DESeq2_unique")
     ##     return(stats_cont)
     ## }
-    ## <bytecode: 0x7fe26824f5b0>
+    ## <bytecode: 0x7fe00e752238>
 
 ``` r
 return_stats
@@ -554,7 +714,7 @@ return_stats
     ##         "DESeq2")
     ##     return(stats_cont)
     ## }
-    ## <bytecode: 0x7fe26f3fb3a8>
+    ## <bytecode: 0x7fe014098698>
 
 ``` r
 cont_list
@@ -582,13 +742,15 @@ cont_list
     ##     spec[is.na(spec)] <- NA
     ##     F1 <- 2 * ((PPV * sens)/(PPV + sens))
     ##     ACC <- (TP_n + TN_n)/(TP_n + TN_n + FP_n + FN_n)
+    ##     FPR <- FP_n/(FP_n + TN_n)
+    ##     FPR[is.na(FPR)] <- NA
     ##     results_return <- c(TP_n, TN_n, FP_n, FN_n, PPV, NPV, FDR, 
-    ##         sens, spec, F1, ACC)
+    ##         sens, spec, F1, ACC, FPR)
     ##     names(results_return) <- c("TP_n", "TN_n", "FP_n", "FN_n", 
-    ##         "PPV", "NPV", "FDR", "sens", "spec", "F1", "ACC")
+    ##         "PPV", "NPV", "FDR", "sens", "spec", "F1", "ACC", "FPR")
     ##     return(results_return)
     ## }
-    ## <bytecode: 0x7fe26a8eaa88>
+    ## <bytecode: 0x7fe00e92e970>
 
 ``` r
 cont
@@ -600,7 +762,7 @@ cont
     ##         x))
     ##     return(list_of_results)
     ## }
-    ## <bytecode: 0x7fe26a2231f8>
+    ## <bytecode: 0x7fe00e5a6388>
 
 ``` r
 get_mean_FC
@@ -616,7 +778,7 @@ get_mean_FC
     ##     rownames(return_r2) <- 1:sim_no
     ##     return(return_r2)
     ## }
-    ## <bytecode: 0x7fe275e9e2e0>
+    ## <bytecode: 0x7fe01f0c13f0>
 
 ``` r
 get_r
@@ -638,7 +800,7 @@ get_r
     ##     names(my_r) <- c("VM.DE", "VM.ER", "ER.DE")
     ##     return(my_r)
     ## }
-    ## <bytecode: 0x7fe26f70af08>
+    ## <bytecode: 0x7fe02115dbd0>
 
 ``` r
 clean_stats
@@ -676,4 +838,4 @@ clean_stats
     ##     }
     ##     return(sim_stats_clean4)
     ## }
-    ## <bytecode: 0x7fe2731d3a08>
+    ## <bytecode: 0x7fe02425e8d8>

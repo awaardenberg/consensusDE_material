@@ -1,7 +1,7 @@
 ---
 title: "Analysis for consensusDE paper - simulation"
 author: "Ashley J. Waardenberg"
-date: "30/06/2019"
+date: "30/10/2019"
 output:
   github_document:
     toc: yes
@@ -13,11 +13,17 @@ vignette: >
 ---
 
 # Notes
+30-10-2019
++ modifications in response to reviewers comments
++ updated to consensusDE version 1.3.4
++ addition of bland-altman analyses
+
 30-06-2019
 + updated for compatability with consensusDE version 1.3.3
 + setting of norm_method = "all_defaults" for multi_de_pairs
 
 # functions used for analysis
+
 ```{r sourceCode,echo=TRUE}
 source("./functions/run_sims.r")
 source("./functions/return_sims_stats.r")
@@ -34,6 +40,8 @@ library(consensusDE)
 library(lattice)
 library(metaseqR)
 library(edgeR)
+library(blandr)
+
 ```
 
 # dataset used
@@ -54,7 +62,8 @@ download.file(url = bottomly,
 
 parameters
 - p_thresh = threshold for determining significance.
-- DE etc.
+- norm_method = "all_deafults". Selects the default normalisation approach for 
+each method.
 
 ```{r eval=TRUE, message=FALSE, warning=FALSE, include=TRUE}
 # establish datasets to model distribution
@@ -63,19 +72,25 @@ data_to_test <- c(paste(download_dir, "bottomly_count_table.txt", sep=""))
 # number of replicates to test
 reps <- c(3, 5)
 
+# default parameters for simulations:
+# sim_number = 10
+# de_number = 500
+# de_size = 10000
+
 # 1. with RUV
 ruv <- lapply(seq_along(reps), function(x) 
                               wrap_all(data_to_test,
                                        p_thresh = 0.05,
                                        replicates = reps[x],
-                                       ruv = TRUE))
+                                       ruv = TRUE,
+                                       norm_method = "all_defaults"))
 # 2. withOUT RUV
 NOruv <- lapply(seq_along(reps), function(x) 
                               wrap_all(data_to_test,
                                        p_thresh = 0.05,
                                        replicates = reps[x],
-                                       ruv = FALSE))
-
+                                       ruv = FALSE,
+                                       norm_method = "all_defaults"))
 
 ```
 
@@ -83,9 +98,8 @@ NOruv <- lapply(seq_along(reps), function(x)
 
 ```{r}
 # non-ruv
-NOruv_3rep <- get_mean_FC(NOruv, 1)
-NOruv_5rep <- get_mean_FC(NOruv, 2)
-
+NOruv_3rep <- get_mean_FC(NOruv, 1) # 1 indicates experiment with 3 replicates
+NOruv_5rep <- get_mean_FC(NOruv, 2) # 2 indicates experiment with 5 replicates
 # ruv
 ruv_3rep <- get_mean_FC(ruv, 1)
 ruv_5rep <- get_mean_FC(ruv, 2)
@@ -105,8 +119,99 @@ barchart(R~group,
          data = table_R,
          groups = reps,
          main = "R-squared of logFC with or without RUV",
+         auto.key = TRUE,
+         ylim = c(0, 1.1))
+
+```
+
+# Bland-Altman analysis
+```{r}
+# non-ruv
+NOruv_3rep <- get_bias_FC(NOruv, 1, method = "bias") # 1 indicates experiment with 3 replicates
+NOruv_5rep <- get_bias_FC(NOruv, 2, method = "bias") # 2 indicates experiment with 5 replicates
+
+# ruv
+ruv_3rep <- get_bias_FC(ruv, 1, method = "bias")
+ruv_5rep <- get_bias_FC(ruv, 2, method = "bias")
+
+# put all results into a table
+# for bias use the absolute values.
+table_bias <- data.frame(c(as.numeric(apply(abs(NOruv_3rep), 2, mean)), 
+                        as.numeric(apply(abs(ruv_3rep), 2, mean)),
+                        as.numeric(apply(abs(NOruv_5rep), 2, mean)),
+                        as.numeric(apply(abs(ruv_5rep), 2, mean))),
+                      c(rep(c("3-NOruv", "3-ruv"), each = 3, 1), 
+                        rep(c("5-NOruv", "5-ruv"), each = 3, 1)),
+                      c(rep(c("1-VM.DE", "2-VM.ER", "3-ER.DE"), 4)))
+colnames(table_bias) <- c("bias", "reps", "group")
+
+# barchart of results
+barchart(bias~group,
+         data = table_bias,
+         groups = reps,
+         main = "Bias of logFC with or without RUV",
          auto.key = TRUE)
 
+```
+
+# upper limits
+```{r}
+# non-ruv
+NOruv_3rep <- get_bias_FC(NOruv, 1, method = "upperLOA") # 1 indicates experiment with 3 replicates
+NOruv_5rep <- get_bias_FC(NOruv, 2, method = "upperLOA") # 2 indicates experiment with 5 replicates
+
+# ruv
+ruv_3rep <- get_bias_FC(ruv, 1, method = "upperLOA")
+ruv_5rep <- get_bias_FC(ruv, 2, method = "upperLOA")
+
+# put all results into a table
+# for bias use the absolute values.
+table_upperLOA <- data.frame(c(as.numeric(apply(abs(NOruv_3rep), 2, mean)), 
+                        as.numeric(apply(abs(ruv_3rep), 2, mean)),
+                        as.numeric(apply(abs(NOruv_5rep), 2, mean)),
+                        as.numeric(apply(abs(ruv_5rep), 2, mean))),
+                      c(rep(c("3-NOruv", "3-ruv"), each = 3, 1), 
+                        rep(c("5-NOruv", "5-ruv"), each = 3, 1)),
+                      c(rep(c("1-VM.DE", "2-VM.ER", "3-ER.DE"), 4)))
+colnames(table_upperLOA) <- c("LOA", "reps", "group")
+
+# barchart of results
+barchart(LOA~group,
+         data = table_upperLOA,
+         groups = reps,
+         main = "table_upperLOA of logFC with or without RUV",
+         ylim = c(0,0.2),
+         auto.key = TRUE)
+```
+
+# lower limits
+```{r}
+# non-ruv
+NOruv_3rep <- get_bias_FC(NOruv, 1, method = "lowerLOA") # 1 indicates experiment with 3 replicates
+NOruv_5rep <- get_bias_FC(NOruv, 2, method = "lowerLOA") # 2 indicates experiment with 5 replicates
+
+# ruv
+ruv_3rep <- get_bias_FC(ruv, 1, method = "lowerLOA")
+ruv_5rep <- get_bias_FC(ruv, 2, method = "lowerLOA")
+
+# put all results into a table
+# for bias use the absolute values.
+table_lowerLOA <- data.frame(c(as.numeric(apply(abs(NOruv_3rep), 2, mean)), 
+                        as.numeric(apply(abs(ruv_3rep), 2, mean)),
+                        as.numeric(apply(abs(NOruv_5rep), 2, mean)),
+                        as.numeric(apply(abs(ruv_5rep), 2, mean))),
+                      c(rep(c("3-NOruv", "3-ruv"), each = 3, 1), 
+                        rep(c("5-NOruv", "5-ruv"), each = 3, 1)),
+                      c(rep(c("1-VM.DE", "2-VM.ER", "3-ER.DE"), 4)))
+colnames(table_lowerLOA) <- c("LOA", "reps", "group")
+
+# barchart of results
+barchart(LOA~group,
+         data = table_lowerLOA,
+         groups = reps,
+         main = "lowerLOA of logFC with or without RUV",
+         ylim = c(0,0.2),
+         auto.key = TRUE)
 ```
 
 # Fold change SD
@@ -140,6 +245,9 @@ mean_fc_summary <- rbind(mean_3rep_fc,
                          mean_5rep_fc,
                          mean_3rep_fc_ruv,
                          mean_5rep_fc_ruv)
+
+# print results
+mean_fc_summary
 
 ```
 
@@ -183,7 +291,8 @@ barchart(JC~group,
          data = table_JC,
          groups = reps,
          main = "Jaccard Coefficient, relative to total intersect",
-         auto.key = TRUE)
+         auto.key = TRUE,
+         ylim = c(0, 1.05))
 
 ```
 
@@ -199,9 +308,9 @@ size_summary <- rbind(int_3rep,
 size_summary
 ```
 
+
 # FDR
 ```{r}
-
 # put FDR (mean from all simulations) into table
 table_FDR <- data.frame(c(as.numeric(apply(NOruv_3rep_stats$FDR, 2, mean)), 
                           as.numeric(apply(ruv_3rep_stats$FDR, 2, mean)),
@@ -221,7 +330,29 @@ barchart(FDR~group,
 
 ```
 
-# F1 statistic
+# sensitivity - added in revision (recall)
+```{r}
+# put sensitivity (mean from all simulations) into table
+table_sens <- data.frame(c(as.numeric(apply(NOruv_3rep_stats$sens, 2, mean)), 
+                          as.numeric(apply(ruv_3rep_stats$sens, 2, mean)),
+                          as.numeric(apply(NOruv_5rep_stats$sens, 2, mean)),
+                          as.numeric(apply(ruv_5rep_stats$sens, 2, mean))),
+                        c(rep(c("3-NOruv", "3-ruv"), each = 5, 1), 
+                          rep(c("5-NOruv", "5-ruv"), each = 5, 1)),
+                        c(rep(c("1-intersect", "5-union", "4-EdgeR", "2-voom", "3-DESeq2"), 4)))
+colnames(table_sens) <- c("sens", "reps", "group")
+
+# plot
+barchart(sens~group,
+         data = table_sens,
+         groups = reps,
+         main = "Sensitivity",
+         ylim = c(0, 1.05),
+         auto.key = TRUE)
+```
+
+# F1 statistics
+
 ```{r}
 
 table_F1 <- data.frame(c(as.numeric(apply(NOruv_3rep_stats$F1, 2, mean)), 
@@ -237,11 +368,12 @@ barchart(F1~group,
          data = table_F1,
          groups = reps,
          main = "F1 - statistics",
-         auto.key = TRUE)
+         auto.key = TRUE,
+         ylim = c(0, 1.05))
          
 ```
 
-# ACCURACY statistic
+# ACCURACY statistic - not good for imbalanced data
 
 ```{r}
 table_ACC <- data.frame(c(as.numeric(apply(NOruv_3rep_stats$ACC, 2, mean)), 
@@ -258,6 +390,7 @@ barchart(ACC~group,
          data = table_ACC,
          groups = reps,
          main = "Accuracy",
+         ylim = c(0, 1.05),
          auto.key = TRUE)
 
 ```

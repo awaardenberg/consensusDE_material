@@ -2,6 +2,7 @@ wrap_all <- function(path_to_data,
                      p_thresh = 0.05,
                      replicates = 3,
                      ruv = FALSE,
+                     norm_method = norm_method,
                      sim_number = 10,
                      de_number = 500,
                      de_size = 10000){
@@ -13,7 +14,8 @@ wrap_all <- function(path_to_data,
              replicates = replicates,
              den_n = de_size, 
              n_de = de_number, 
-             ruv = ruv))
+             ruv = ruv,
+             norm_method = norm_method))
   # return stats
   sims_stats <- lapply(1:length(sims), function(x) 
     return_stats(sims[[x]],
@@ -34,7 +36,8 @@ run_sims <- function(real_data = NULL,
                      replicates = 3,
                      den_n = 10000, 
                      n_de = 500, 
-                     ruv = FALSE){
+                     ruv = FALSE,
+                     norm_method = norm_method){
   # define sample_table by size and de number
   sample_table <- data.frame("file"=paste(rep(c("G1_rep", "G2_rep"), each = replicates), 1:replicates, sep=""),
                              "group"=rep(c("G1", "G2"), each = replicates))
@@ -64,7 +67,7 @@ run_sims <- function(real_data = NULL,
   # run multi_de_pairs from consensusDE
   mde <- multi_de_pairs(summarized = se,
                         ruv_correct = ruv,
-                        norm_method = "all_defaults",
+                        norm_method = norm_method,
                         verbose = TRUE)
   # obtain merged data results
   merged_data <- mde$merged[[1]]

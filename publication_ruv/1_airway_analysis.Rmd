@@ -1,7 +1,7 @@
 ---
 title: "Analysis for consensusDE paper - airway RNA-seq"
 author: "Ashley J. Waardenberg"
-date: "30/06/2019"
+date: "30/10/2019"
 output:
   github_document:
     toc: yes
@@ -13,13 +13,22 @@ vignette: >
 ---
 
 # Notes
+30-10-2019
++ modifications in response to reviewers comments
++ updated to consensusDE version 1.3.4
++ addition of bland-altman analyses
+
 30-06-2019
 + updated for compatability with consensusDE version 1.3.3
 + setting of norm_method = "all_defaults" for multi_de_pairs
 
+# libraries used for analysis
+
 ```{r eval=TRUE, message=FALSE, warning=FALSE, include=TRUE}
 library(consensusDE)
 library(airway)
+library(lattice)
+library(blandr)
 data(airway)
 ```
 
@@ -50,74 +59,17 @@ airway_NOruv <- multi_de_pairs(summarized = airway_filter,
 
 ```
 
-# LogFC goodness of fit - without RUV
-```{r}
-# extract logFC values for edgeR, voom and DESeq2
-all_FC <- get_merged_logfc(airway_NOruv)
-# plot results and obtain goodness of fit
-
-# 1. Voom vs. DESeq2
-plot(all_FC$logFC_VM, 
-     all_FC$logFC_DE, 
-     xlab="voom - logFC", 
-     ylab="DESeq2 - logFC")
-summary(lm(all_FC$logFC_VM~all_FC$logFC_DE))
-
-# 2. Voom vs. edgeR
-plot(all_FC$logFC_VM, 
-     all_FC$logFC_ER,
-     xlab="voom - logFC", 
-     ylab="edgeR - logFC")
-summary(lm(all_FC$logFC_VM~all_FC$logFC_ER))
-
-# 3. edgeR vs. DESeq2
-plot(all_FC$logFC_ER, 
-     all_FC$logFC_DE, 
-     xlab="edgeR - logFC", 
-     ylab="DESeq2 - logFC")
-summary(lm(all_FC$logFC_ER~all_FC$logFC_DE))
-
-```
-
-# LogFC goodness of fit - with RUV
-
-```{r}
-# extract logFC values for edgeR, voom and DESeq2
-all_FC_ruv <- get_merged_logfc(airway_ruv)
-# plot results and obtain goodness of fit
-
-# 1. Voom vs. DESeq2
-plot(all_FC_ruv$logFC_VM, 
-     all_FC_ruv$logFC_DE, 
-     xlab="voom - logFC", 
-     ylab="DESeq2 - logFC")
-summary(lm(all_FC_ruv$logFC_VM~all_FC_ruv$logFC_DE))
-
-# 2. Voom vs. edgeR
-plot(all_FC_ruv$logFC_VM, 
-     all_FC_ruv$logFC_ER,
-     xlab="voom - logFC", 
-     ylab="edgeR - logFC")
-summary(lm(all_FC_ruv$logFC_VM~all_FC_ruv$logFC_ER))
-
-# 3. edgeR vs. DESeq2
-plot(all_FC_ruv$logFC_ER, 
-     all_FC_ruv$logFC_DE, 
-     xlab="edgeR - logFC", 
-     ylab="DESeq2 - logFC")
-summary(lm(all_FC_ruv$logFC_ER~all_FC_ruv$logFC_DE))
-
-```
-
 # Jaccard Coefficient and Set Sizes
 
 ```{r}
+# extract cde statistics
 non_ruv <- return_cde_stats(airway_NOruv)
 ruv <- return_cde_stats(airway_ruv)
 
 # Jaccard coefficients
 JC_stats <- rbind(unlist(non_ruv$props),
-                  unlist(ruv$props))
+                  unlist(ruv$props)
+                  )
 rownames(JC_stats) <- c("non_RUV", "RUV")
 
 #print results
@@ -154,12 +106,14 @@ set_sizes
 # Mean LogFC standard deviation of sets
 
 ```{r}
+
 mean_sd <- rbind(c(mean(abs(non_ruv$ER$LogFC_sd)),
                    mean(abs(non_ruv$VM$LogFC_sd)),
                    mean(abs(non_ruv$DE$LogFC_sd))),
                  c(mean(abs(ruv$ER$LogFC_sd)),
                    mean(abs(ruv$VM$LogFC_sd)),
                    mean(abs(ruv$DE$LogFC_sd))))
+
 colnames(mean_sd) <- c("edgeR", "voom", "DESeq2")
 rownames(mean_sd) <- c("non_RUV", "RUV")
 
@@ -176,6 +130,7 @@ mean_sd_not_intersect <- rbind(c(mean(abs(non_ruv$ER[!non_ruv$ER$ID %in% non_ruv
                                c(mean(abs(ruv$ER[!ruv$ER$ID %in% ruv$intersect,]$LogFC_sd)),
                                  mean(abs(ruv$VM[!ruv$VM$ID %in% ruv$intersect,]$LogFC_sd)),
                                  mean(abs(ruv$DE[!ruv$DE$ID %in% ruv$intersect,]$LogFC_sd))))
+
 colnames(mean_sd_not_intersect) <- c("edgeR", "voom", "DESeq2")
 rownames(mean_sd_not_intersect) <- c("non_RUV", "RUV")
 
@@ -187,6 +142,7 @@ mean_sd_not_intersect
 # overall intersect
 mean_sd_intersect <- c(mean(abs(non_ruv$DE[non_ruv$DE$ID %in% non_ruv$intersect,]$LogFC_sd)),
                        mean(abs(ruv$DE[ruv$DE$ID %in% ruv$intersect,]$LogFC_sd)))
+
 names(mean_sd_intersect) <- c("non_RUV", "RUV")
 
 # print results
@@ -201,6 +157,223 @@ names(mean_sd_union) <- c("non_RUV", "RUV")
 
 # print results
 mean_sd_union
+```
+
+# LogFC goodness of fit - extract statistics
+
+```{r}
+# extract statistics
+all_FC <- get_merged_logfc(airway_NOruv)
+all_FC_ruv <- get_merged_logfc(airway_ruv)
+
+```
+
+# LogFC goodness of fit - without RUV
+
+```{r}
+# extract logFC values for edgeR, voom and DESeq2
+# using R-squared for comparison
+
+# 1. Voom vs. DESeq2
+plot(all_FC$logFC_VM, 
+     all_FC$logFC_DE, 
+     xlab="voom - logFC", 
+     ylab="DESeq2 - logFC")
+summary(lm(all_FC$logFC_VM~all_FC$logFC_DE))
+
+# 2. Voom vs. edgeR
+plot(all_FC$logFC_VM, 
+     all_FC$logFC_ER,
+     xlab="voom - logFC", 
+     ylab="edgeR - logFC")
+summary(lm(all_FC$logFC_VM~all_FC$logFC_ER))
+
+# 3. edgeR vs. DESeq2
+plot(all_FC$logFC_ER, 
+     all_FC$logFC_DE, 
+     xlab="edgeR - logFC", 
+     ylab="DESeq2 - logFC")
+summary(lm(all_FC$logFC_ER~all_FC$logFC_DE))
+
+```
+
+# LogFC goodness of fit - with RUV
+
+```{r}
+# extract logFC values for edgeR, voom and DESeq2
+# using R-squared for comparison
+
+# 1. Voom vs. DESeq2
+plot(all_FC_ruv$logFC_VM, 
+     all_FC_ruv$logFC_DE, 
+     xlab="voom - logFC", 
+     ylab="DESeq2 - logFC")
+summary(lm(all_FC_ruv$logFC_VM~all_FC_ruv$logFC_DE))
+
+# 2. Voom vs. edgeR
+plot(all_FC_ruv$logFC_VM, 
+     all_FC_ruv$logFC_ER,
+     xlab="voom - logFC", 
+     ylab="edgeR - logFC")
+summary(lm(all_FC_ruv$logFC_VM~all_FC_ruv$logFC_ER))
+
+# 3. edgeR vs. DESeq2
+plot(all_FC_ruv$logFC_ER, 
+     all_FC_ruv$logFC_DE, 
+     xlab="edgeR - logFC", 
+     ylab="DESeq2 - logFC")
+summary(lm(all_FC_ruv$logFC_ER~all_FC_ruv$logFC_DE))
+
+```
+
+# Blant Altman analysis
+
+```{r}
+# bias of mean differences (or level of mean agreement)
+
+all_FC_BA <- data.frame("v_de" = c(blandr.statistics(all_FC$logFC_VM , all_FC$logFC_DE, sig.level=0.95)$bias,
+                                   blandr.statistics(all_FC_ruv$logFC_VM , all_FC_ruv$logFC_DE, sig.level=0.95)$bias),
+                        "v_er" = c(blandr.statistics(all_FC$logFC_VM , all_FC$logFC_ER, sig.level=0.95)$bias,
+                                   blandr.statistics(all_FC_ruv$logFC_VM , all_FC_ruv$logFC_ER, sig.level=0.95)$bias),
+                        "de_er" = c(blandr.statistics(all_FC$logFC_DE , all_FC$logFC_ER, sig.level=0.95)$bias,
+                                    blandr.statistics(all_FC_ruv$logFC_DE , all_FC_ruv$logFC_ER, sig.level=0.95)$bias))
+
+row.names(all_FC_BA) <- c("nonRUV", "RUV")
+
+#print results
+all_FC_BA
+```
+
+```{r}
+# limits of agreement (boundaries of agreement values between the different methods @ 95%)
+# upperLOA and lowerLOA
+
+FC_BA_upperLOA <- data.frame("v_de" = c(blandr.statistics(all_FC$logFC_VM , all_FC$logFC_DE, sig.level=0.95)$upperLOA,
+                                       blandr.statistics(all_FC_ruv$logFC_VM , all_FC_ruv$logFC_DE, sig.level=0.95)$upperLOA),
+                            "v_er" = c(blandr.statistics(all_FC$logFC_VM , all_FC$logFC_ER, sig.level=0.95)$upperLOA,
+                                       blandr.statistics(all_FC_ruv$logFC_VM , all_FC_ruv$logFC_ER, sig.level=0.95)$upperLOA),
+                            "de_er" = c(blandr.statistics(all_FC$logFC_DE , all_FC$logFC_ER, sig.level=0.95)$upperLOA,
+                                        blandr.statistics(all_FC_ruv$logFC_DE , all_FC_ruv$logFC_ER, sig.level=0.95)$upperLOA)
+                            )
+
+row.names(FC_BA_upperLOA) <- c("nonRUV", "RUV")
+#print results
+FC_BA_upperLOA
+
+```
+
+```{r}
+# barchart of results
+FC_BA_upperLOA_bc <- data.frame("group" = names(unlist(FC_BA_upperLOA)),
+                                "LOA" = unlist(FC_BA_upperLOA),
+                                "reps" = rep(c("nonRUV", "RUV"),3))
+
+barchart(LOA~group,
+         data = FC_BA_upperLOA_bc,
+         groups = reps,
+         main = "upperLOA",
+         auto.key = TRUE)
+```
+
+
+
+
+```{r}
+FC_BA_lowerLOA <- data.frame("v_de" = c(blandr.statistics(all_FC$logFC_VM , all_FC$logFC_DE, sig.level=0.95)$lowerLOA,
+                                       blandr.statistics(all_FC_ruv$logFC_VM , all_FC_ruv$logFC_DE, sig.level=0.95)$lowerLOA),
+                            "v_er" = c(blandr.statistics(all_FC$logFC_VM , all_FC$logFC_ER, sig.level=0.95)$lowerLOA,
+                                       blandr.statistics(all_FC_ruv$logFC_VM , all_FC_ruv$logFC_ER, sig.level=0.95)$lowerLOA),
+                            "de_er" = c(blandr.statistics(all_FC$logFC_DE , all_FC$logFC_ER, sig.level=0.95)$lowerLOA,
+                                        blandr.statistics(all_FC_ruv$logFC_DE , all_FC_ruv$logFC_ER, sig.level=0.95)$lowerLOA)
+                            )
+
+row.names(FC_BA_lowerLOA) <- c("nonRUV", "RUV")
+#print results
+FC_BA_lowerLOA
+
+```
+
+
+```{r}
+# barchart of results
+FC_BA_lowerLOA_bc <- data.frame("group" = names(unlist(FC_BA_lowerLOA)),
+                                "LOA" = abs(unlist(FC_BA_lowerLOA)),
+                                "reps" = rep(c("nonRUV", "RUV"),3))
+
+barchart(LOA~group,
+         data = FC_BA_lowerLOA_bc,
+         groups = reps,
+         main = "lowerLOA",
+         auto.key = TRUE)
+
+
+```
+
+#  Blant - Altman plots a
+
+```{r}
+# plot results and determine statistics
+
+# 1. Voom vs. DESeq2
+blandr.draw(method1 = all_FC$logFC_VM, 
+            method2 = all_FC$logFC_DE,
+            plotTitle = "Bland-Altman, voom vs. DEseq2",
+            annotate = TRUE,
+            lowest_y_axis = -2,
+            highest_y_axis = 2,
+            plotter = "rplot")
+
+# 2. Voom vs. edgeR
+blandr.draw(method1 = all_FC$logFC_VM, 
+            method2 = all_FC$logFC_ER,
+            plotTitle = "Bland-Altman, voom vs. edgeR",
+            annotate = TRUE,
+            lowest_y_axis = -2,
+            highest_y_axis = 2,
+            plotter = "rplot")
+
+# 3. edgeR vs. DESeq2
+blandr.draw(method1 = all_FC$logFC_ER, 
+            method2 = all_FC$logFC_DE,
+            plotTitle = "Bland-Altman, edgeR vs. DEseq2",
+            annotate = TRUE,
+            lowest_y_axis = -2,
+            highest_y_axis = 2,
+            plotter = "rplot")
+
+```
+
+# add Blant - Altman plots and t-tests - with RUV 
+
+```{r}
+
+# 1. Voom vs. DESeq2
+blandr.draw(method1 = all_FC_ruv$logFC_VM, 
+            method2 = all_FC_ruv$logFC_DE,
+            plotTitle = "Bland-Altman, voom vs. DEseq2",
+            annotate = TRUE,
+            lowest_y_axis = -2,
+            highest_y_axis = 2,
+            plotter = "rplot")
+
+# 2. Voom vs. edgeR
+blandr.draw(method1 = all_FC_ruv$logFC_VM, 
+            method2 = all_FC_ruv$logFC_ER,
+            plotTitle = "Bland-Altman, voom vs. edgeR",
+            annotate = TRUE,
+            lowest_y_axis = -2,
+            highest_y_axis = 2,
+            plotter = "rplot")
+
+# 3. edgeR vs. DESeq2
+blandr.draw(method1 = all_FC_ruv$logFC_ER, 
+            method2 = all_FC_ruv$logFC_DE,
+            plotTitle = "Bland-Altman, edgeR vs. DEseq2",
+            annotate = TRUE,
+            lowest_y_axis = -2,
+            highest_y_axis = 2,
+            plotter = "rplot")
+
 ```
 
 # sessionInfo

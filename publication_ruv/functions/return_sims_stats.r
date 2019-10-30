@@ -66,8 +66,9 @@ cont_list <- function(input_data, col){
   spec <- TN_n/(TN_n+FP_n); spec[is.na(spec)] <- NA
   F1 <- 2*((PPV*sens)/(PPV+sens))
   ACC <- (TP_n+TN_n)/(TP_n+TN_n+FP_n+FN_n)
-  results_return <- c(TP_n, TN_n, FP_n, FN_n, PPV, NPV, FDR, sens, spec, F1, ACC)
-  names(results_return) <- c("TP_n", "TN_n", "FP_n", "FN_n", "PPV", "NPV", "FDR", "sens", "spec", "F1", "ACC")
+  FPR <- FP_n/(FP_n+TN_n); FPR[is.na(FPR)] <- NA
+  results_return <- c(TP_n, TN_n, FP_n, FN_n, PPV, NPV, FDR, sens, spec, F1, ACC, FPR)
+  names(results_return) <- c("TP_n", "TN_n", "FP_n", "FN_n", "PPV", "NPV", "FDR", "sens", "spec", "F1", "ACC", "FPR")
 return(results_return)
 }
 
@@ -108,8 +109,64 @@ get_r <- function(count_data, which_sim){
             summary(lm(all_FC$logFC_VM~all_FC$logFC_ER))$r.squared,
             summary(lm(all_FC$logFC_ER~all_FC$logFC_DE))$r.squared)
   names(my_r) <- c("VM.DE", "VM.ER", "ER.DE")
-return(my_r)
+  return(my_r)
 }
+
+get_bias_FC <- function(which_data, which_experiment, method = NULL){
+  count_me <- which_data[[which_experiment]]$sims
+  # dimensions and names
+  sim_no <- length(count_me)
+  return_bias <- lapply(1:sim_no, function(x) 
+    get_bias(count_me, x, method = method))
+  return_bias2 <- t(data.frame(return_bias))
+  rownames(return_bias2) <- 1:sim_no
+  return(return_bias2)
+}
+
+get_bias <- function(count_data, which_sim, method = NULL){
+  # obtain LogFC values
+  DE.short <- count_data[[which_sim]]$mde_all$deseq$short_results[[1]]
+  DE.short <- data.frame("logFC_DE"=DE.short$logFC,
+                         "ID"= rownames(DE.short))
+  
+  VM.short <- count_data[[which_sim]]$mde_all$voom$short_results[[1]]
+  VM.short <- data.frame("logFC_VM"=VM.short$logFC,
+                         "ID"= rownames(VM.short))
+  
+  ER.short <- count_data[[which_sim]]$mde_all$edger$short_results[[1]]
+  ER.short <- data.frame("logFC_ER"=ER.short$logFC,
+                         "ID"= rownames(ER.short))
+  # compare modelled FC
+  all_FC <- merge(merge(DE.short, VM.short, by="ID"), ER.short, by="ID")
+  if(method == "upperLOA"){
+  my_bias <- c(blandr.statistics(all_FC$logFC_VM, all_FC$logFC_DE, sig.level=0.95)$upperLOA,
+               blandr.statistics(all_FC$logFC_VM, all_FC$logFC_ER, sig.level=0.95)$upperLOA,
+               blandr.statistics(all_FC$logFC_ER, all_FC$logFC_DE, sig.level=0.95)$upperLOA)
+  }
+  if(method == "lowerLOA"){
+    my_bias <- c(blandr.statistics(all_FC$logFC_VM, all_FC$logFC_DE, sig.level=0.95)$lowerLOA,
+                 blandr.statistics(all_FC$logFC_VM, all_FC$logFC_ER, sig.level=0.95)$lowerLOA,
+                 blandr.statistics(all_FC$logFC_ER, all_FC$logFC_DE, sig.level=0.95)$lowerLOA)
+  }
+  if(method == "bias"){
+    my_bias <- c(blandr.statistics(all_FC$logFC_VM, all_FC$logFC_DE, sig.level=0.95)$bias,
+                 blandr.statistics(all_FC$logFC_VM, all_FC$logFC_ER, sig.level=0.95)$bias,
+                 blandr.statistics(all_FC$logFC_ER, all_FC$logFC_DE, sig.level=0.95)$bias)
+  }
+  if(method == "ttest"){
+    my_bias <- c(t.test((all_FC$logFC_VM-all_FC$logFC_DE), mu=0)$p.value,
+                 t.test((all_FC$logFC_VM-all_FC$logFC_ER), mu=0)$p.value,
+                 t.test((all_FC$logFC_ER-all_FC$logFC_DE), mu=0)$p.value)
+    
+  }
+  names(my_bias) <- c("VM.DE", "VM.ER", "ER.DE")
+  return(my_bias)
+}
+
+
+
+
+
 
 clean_stats <- function(which_data, which_experiment, isLogFC = FALSE){
   # format difference for logFC stats
